@@ -15,12 +15,18 @@ contract Staker {
 	uint256 public currentTimestamp = block.timestamp;
 	uint256 public constant threshold = 1 ether;
 
-	bool public openForWithdraw = false;
-
 	constructor(address exampleExternalContractAddress) {
 		exampleExternalContract = ExampleExternalContract(
 			exampleExternalContractAddress
 		);
+	}
+
+	modifier notYetCompleted() {
+		require(
+			!exampleExternalContract.completed(),
+			"This contract has reached its goal, no further action is allowed!"
+		);
+		_;
 	}
 
 	// Collect funds in a payable `stake()` function and track individual `balances` with a mapping:
@@ -28,7 +34,7 @@ contract Staker {
 	function stake() public payable {
 		require(
 			block.timestamp < deadline,
-			"Staking is not allowed after deadline has already passed!"
+			"Staking is not allowed after deadline!"
 		);
 
 		balances[msg.sender] += msg.value;
@@ -38,23 +44,18 @@ contract Staker {
 
 	// After some `deadline` allow anyone to call an `execute()` function
 	// If the deadline has passed and the threshold is met, it should call `exampleExternalContract.complete{value: address(this).balance}()`
-	function execute() public {
+	function execute() public notYetCompleted {
 		require(block.timestamp >= deadline, "Deadline has not yet passed!");
 		require(
-			!openForWithdraw,
-			"Deadline has passed and withdraw conditions have already been met!"
+			address(this).balance >= threshold,
+			"Not enough has been staked! You can only withdraw your balance."
 		);
 
-		if (address(this).balance >= threshold) {
-			exampleExternalContract.complete{ value: address(this).balance }();
-		} else {
-			openForWithdraw = true;
-		}
+		exampleExternalContract.complete{ value: address(this).balance }();
 	}
 
 	// If the `threshold` was not met, allow everyone to call a `withdraw()` function to withdraw their balance
-	function withdraw() public payable {
-		require(openForWithdraw, "Withdraw not allowed!");
+	function withdraw() public payable notYetCompleted {
 		require(balances[msg.sender] > 0, "No balance to withdraw!");
 
 		uint256 amount = balances[msg.sender];
