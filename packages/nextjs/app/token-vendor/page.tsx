@@ -15,6 +15,7 @@ const TokenVendor: NextPage = () => {
   const [tokensToBuy, setTokensToBuy] = useState<string | bigint>("");
   const [isApproved, setIsApproved] = useState(false);
   const [tokensToSell, setTokensToSell] = useState<string>("");
+  const [canReenterSellAmount, setCanReenterSellAmount] = useState(false);
 
   const { address } = useAccount();
   const { data: yourTokenSymbol } = useScaffoldReadContract({
@@ -141,16 +142,20 @@ const TokenVendor: NextPage = () => {
                 placeholder="amount of tokens to sell"
                 value={tokensToSell}
                 onChange={value => setTokensToSell(value as string)}
-                disabled={isApproved}
+                disabled={isApproved && !canReenterSellAmount}
                 disableMultiplyBy1e18
               />
             </div>
 
             <div className="flex gap-4">
               <button
-                className={`btn ${isApproved ? "btn-disabled" : "btn-secondary"}`}
+                className={`btn ${isApproved || !(Number(tokensToSell) > 0) ? "btn-disabled" : "btn-secondary"}`}
                 onClick={async () => {
                   try {
+                    if (!(Number(tokensToSell) > 0)) {
+                      throw new Error();
+                    }
+
                     await writeYourTokenAsync({
                       functionName: "approve",
                       args: [vendorContractData?.address, multiplyTo1e18(tokensToSell)],
@@ -170,7 +175,9 @@ const TokenVendor: NextPage = () => {
                   try {
                     await writeVendorAsync({ functionName: "sellTokens", args: [multiplyTo1e18(tokensToSell)] });
                     setIsApproved(false);
+                    setCanReenterSellAmount(false);
                   } catch (err) {
+                    setCanReenterSellAmount(true);
                     console.error("Error calling sellTokens function");
                   }
                 }}
