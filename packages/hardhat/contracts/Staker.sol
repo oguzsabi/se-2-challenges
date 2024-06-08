@@ -11,7 +11,7 @@ contract Staker {
 
 	event Stake(address indexed sender, uint256 amount);
 
-	uint256 public deadline = block.timestamp + 30 seconds;
+	uint256 public deadline = block.timestamp + 72 hours;
 	uint256 public currentTimestamp = block.timestamp;
 	uint256 public constant threshold = 1 ether;
 
