@@ -8,6 +8,8 @@ export const STREAM_ETH_VALUE = "0.5";
 
 export type Voucher = { updatedBalance: bigint; signature: `0x${string}}` };
 
+const discrepancyThreshold = parseEther(STREAM_ETH_VALUE);
+
 type GuruProps = {
   challenged: Array<AddressType>;
   closed: Array<AddressType>;
@@ -43,10 +45,21 @@ export const Guru: FC<GuruProps> = ({ challenged, closed, opened, writable }) =>
   }, [channels, opened]);
 
   Object.keys(channels)?.forEach(clientAddress => {
-    channels[clientAddress].onmessage = receiveVoucher(clientAddress);
+    channels[clientAddress as `0x${string}`].onmessage = receiveVoucher(clientAddress);
   });
 
   const provideService = (client: AddressType, wisdom: string) => {
+    const bestVoucher = vouchers[client]?.updatedBalance || 0n;
+    const wisdomSize = BigInt((wisdom?.length ?? 0) * (10 * 10 ** 15));
+    const discrepancy = wisdomSize - bestVoucher;
+
+    if (discrepancy > discrepancyThreshold) {
+      setWisdoms({ ...wisdoms, [client]: wisdom.substring(0, Number(formatEther(discrepancyThreshold)) * 100) });
+
+      console.error(`Service to client ${client} has been cut off due to non-payment.`);
+      return;
+    }
+
     setWisdoms({ ...wisdoms, [client]: wisdom });
     channels[client]?.postMessage(wisdom);
   };
@@ -75,7 +88,22 @@ export const Guru: FC<GuruProps> = ({ challenged, closed, opened, writable }) =>
        *  and then use verifyMessage() to confirm that voucher signer was
        *  `clientAddress`. (If it wasn't, log some error message and return).
        */
-      const existingVoucher = vouchers[clientAddress];
+
+      const packed = encodePacked(["uint256"], [updatedBalance]);
+      const hashed = keccak256(packed);
+      const arrayified = toBytes(hashed);
+      const isVerified = await verifyMessage({
+        address: clientAddress as `0x${string}`,
+        message: { raw: arrayified },
+        signature: data.signature,
+      });
+
+      if (!isVerified) {
+        console.error("voucher signature verification failed");
+        return;
+      }
+
+      const existingVoucher = vouchers[clientAddress as `0x${string}`];
 
       // update our stored voucher if this new one is more valuable
       if (existingVoucher === undefined || updatedBalance < existingVoucher.updatedBalance) {
@@ -131,13 +159,13 @@ export const Guru: FC<GuruProps> = ({ challenged, closed, opened, writable }) =>
             </div>
 
             {/* Checkpoint 4: */}
-            {/* <CashOutVoucherButton
+            <CashOutVoucherButton
               key={clientAddress}
               clientAddress={clientAddress}
               challenged={challenged}
               closed={closed}
               voucher={vouchers[clientAddress]}
-            /> */}
+            />
           </div>
         ))}
       </div>
