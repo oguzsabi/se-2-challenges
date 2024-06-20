@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   31337: {
     Streamer: {
-      address: "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+      address: "0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E",
       abi: [
         {
           anonymous: false,
@@ -17,6 +17,12 @@ const deployedContracts = {
               internalType: "address",
               name: "",
               type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
             },
           ],
           name: "Challenged",

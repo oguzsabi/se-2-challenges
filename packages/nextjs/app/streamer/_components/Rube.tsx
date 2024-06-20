@@ -9,7 +9,7 @@ import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaf
 const ETH_PER_CHARACTER = "0.01";
 
 type RubeProps = {
-  challenged: Array<AddressType>;
+  challenged: boolean;
   closed: Array<AddressType>;
   opened: Array<AddressType>;
   writable: Array<AddressType>;
@@ -143,7 +143,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
           {/* Checkpoint 5: challenge & closure */}
           <div className="flex flex-col items-center pb-6">
             <button
-              disabled={challenged.includes(userAddress)}
+              disabled={challenged}
               className="btn btn-primary"
               onClick={async () => {
                 // disable the production of further voucher signatures
@@ -172,7 +172,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
             </button>
 
             <div className="p-2 mt-6 h-10">
-              {challenged.includes(userAddress) && !!timeLeft && (
+              {challenged && !!timeLeft && (
                 <>
                   <span>Time left:</span> {humanizeDuration(Number(timeLeft) * 1000)}
                 </>
@@ -180,7 +180,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
             </div>
             <button
               className="btn btn-primary"
-              disabled={!challenged.includes(userAddress) || !!timeLeft}
+              disabled={!challenged || !!timeLeft}
               onClick={async () => {
                 try {
                   await writeStreamerContractAsync({ functionName: "defundChannel" });

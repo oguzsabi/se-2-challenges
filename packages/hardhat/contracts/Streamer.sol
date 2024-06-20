@@ -6,7 +6,7 @@ import "hardhat/console.sol";
 
 contract Streamer is Ownable {
 	event Opened(address, uint256);
-	event Challenged(address);
+	event Challenged(address, uint256);
 	event Withdrawn(address, uint256);
 	event Closed(address);
 
@@ -77,7 +77,7 @@ contract Streamer is Ownable {
 		require(balances[msg.sender] > 0, "No open channel found");
 
 		canCloseAt[msg.sender] = block.timestamp + 30 seconds;
-		emit Challenged(msg.sender);
+		emit Challenged(msg.sender, canCloseAt[msg.sender]);
 	}
 
 	function defundChannel() public {

@@ -25,7 +25,7 @@ const Streamer: NextPage = () => {
   const isGuru = ownerKnown && ownerAddress === userAddress;
 
   // challenged
-  const [challenged, setChallenged] = useState<AddressType[]>([]);
+  const [challenged, setChallenged] = useState<Record<AddressType, bigint>>({});
 
   const { data: challengedHistoryData } = useScaffoldEventHistory({
     contractName: "Streamer",
@@ -35,11 +35,19 @@ const Streamer: NextPage = () => {
   });
 
   useEffect(() => {
-    if (challengedHistoryData?.length !== undefined && challengedHistoryData.length !== challenged.length) {
-      const challengedChannelsAddresses = challengedHistoryData?.map(event => event.args[0]);
-      setChallenged(challengedChannelsAddresses || []);
+    if (
+      challengedHistoryData?.length !== undefined &&
+      challengedHistoryData.length !== Object.keys(challenged).length
+    ) {
+      const challengedChannelsAddresses: Record<AddressType, bigint> = {};
+
+      challengedHistoryData?.forEach(event => {
+        challengedChannelsAddresses[event.args[0]] = event.args[1];
+      });
+
+      setChallenged(challengedChannelsAddresses);
     }
-  }, [challenged.length, challengedHistoryData]);
+  }, [challenged, challengedHistoryData]);
 
   // closed
   const [closed, setClosed] = useState<AddressType[]>([]);
@@ -85,7 +93,12 @@ const Streamer: NextPage = () => {
             isGuru ? (
               <Guru closed={closed} opened={opened} challenged={challenged} writable={writableChannels} />
             ) : (
-              <Rube closed={closed} opened={opened} challenged={challenged} writable={writableChannels} />
+              <Rube
+                closed={closed}
+                opened={opened}
+                challenged={!!challenged[userAddress as `0x${string}`]}
+                writable={writableChannels}
+              />
             )
           ) : null}
         </div>

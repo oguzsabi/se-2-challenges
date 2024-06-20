@@ -1,7 +1,6 @@
 import { type FC, useEffect, useState } from "react";
-import { CashOutVoucherButton } from "./CashOutVoucherButton";
+import { RubeWisdomBox } from "./RubeWisdomBox";
 import { Address as AddressType, encodePacked, formatEther, keccak256, parseEther, toBytes, verifyMessage } from "viem";
-import { Address } from "~~/components/scaffold-eth";
 import { useDeployedContractInfo, useWatchBalance } from "~~/hooks/scaffold-eth";
 
 export const STREAM_ETH_VALUE = "0.5";
@@ -11,7 +10,7 @@ export type Voucher = { updatedBalance: bigint; signature: `0x${string}}` };
 const discrepancyThreshold = parseEther(STREAM_ETH_VALUE);
 
 type GuruProps = {
-  challenged: Array<AddressType>;
+  challenged: Record<AddressType, bigint>;
   closed: Array<AddressType>;
   opened: Array<AddressType>;
   writable: Array<AddressType>;
@@ -129,44 +128,15 @@ export const Guru: FC<GuruProps> = ({ challenged, closed, opened, writable }) =>
       </div>
       <div className="mt-4 w-full flex flex-col">
         {writable.map(clientAddress => (
-          <div key={clientAddress} className="w-full flex flex-col border-primary border-t py-6">
-            <Address address={clientAddress} size="xl" />
-            <textarea
-              className="mt-3 bg-base-200"
-              rows={3}
-              placeholder="Provide your wisdom here..."
-              onChange={e => {
-                e.stopPropagation();
-                const updatedWisdom = e.target.value;
-                provideService(clientAddress, updatedWisdom);
-              }}
-              value={wisdoms[clientAddress]}
-            />
-
-            <div className="mt-2 flex justify-between">
-              <div>
-                Served: <strong>{wisdoms[clientAddress]?.length || 0}</strong>&nbsp;chars
-              </div>
-              <div>
-                Received:{" "}
-                <strong id={`claimable-${clientAddress}`}>
-                  {vouchers[clientAddress]
-                    ? formatEther(parseEther(STREAM_ETH_VALUE) - vouchers[clientAddress].updatedBalance)
-                    : 0}
-                </strong>
-                &nbsp;ETH
-              </div>
-            </div>
-
-            {/* Checkpoint 4: */}
-            <CashOutVoucherButton
-              key={clientAddress}
-              clientAddress={clientAddress}
-              challenged={challenged}
-              closed={closed}
-              voucher={vouchers[clientAddress]}
-            />
-          </div>
+          <RubeWisdomBox
+            key={clientAddress}
+            clientAddress={clientAddress}
+            challenged={challenged}
+            closed={closed.includes(clientAddress)}
+            voucher={vouchers[clientAddress]}
+            wisdom={wisdoms[clientAddress]}
+            provideService={provideService}
+          />
         ))}
       </div>
     </>

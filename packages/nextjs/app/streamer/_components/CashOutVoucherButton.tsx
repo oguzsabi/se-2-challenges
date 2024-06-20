@@ -6,8 +6,8 @@ import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaf
 
 type CashOutVoucherButtonProps = {
   clientAddress: Address;
-  challenged: Address[];
-  closed: Address[];
+  challenged: boolean;
+  closed: boolean;
   voucher: Voucher;
 };
 
@@ -21,13 +21,12 @@ export const CashOutVoucherButton = ({ clientAddress, challenged, closed, vouche
     watch: true,
   });
 
-  const isButtonDisabled =
-    !voucher || closed.includes(clientAddress) || (challenged.includes(clientAddress) && !timeLeft);
+  const isButtonDisabled = !voucher || !!closed || (!!challenged && !timeLeft);
 
   return (
     <div className="w-full flex flex-col items-center">
       <div className="h-8 pt-2">
-        {challenged.includes(clientAddress) &&
+        {challenged &&
           (!!timeLeft ? (
             <>
               <span>Time left:</span> {timeLeft && humanizeDuration(Number(timeLeft) * 1000)}
@@ -37,9 +36,7 @@ export const CashOutVoucherButton = ({ clientAddress, challenged, closed, vouche
           ))}
       </div>
       <button
-        className={`mt-3 btn btn-primary${challenged.includes(clientAddress) ? " btn-error" : ""}${
-          isButtonDisabled ? " btn-disabled" : ""
-        }`}
+        className={`mt-3 btn btn-primary${challenged ? " btn-error" : ""}${isButtonDisabled ? " btn-disabled" : ""}`}
         disabled={isButtonDisabled}
         onClick={async () => {
           try {
