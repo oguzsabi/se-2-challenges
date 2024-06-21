@@ -73,7 +73,7 @@ const CreatePage: FC = () => {
 
       const newHash = (await metaMultiSigWallet?.read.getTransactionHash([
         nonce as bigint,
-        String(txTo),
+        String(txTo) as `0x${string}`,
         BigInt(predefinedTxData.amount as string),
         predefinedTxData.callData as `0x${string}`,
       ])) as `0x${string}`;

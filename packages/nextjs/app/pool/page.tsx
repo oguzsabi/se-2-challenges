@@ -57,7 +57,7 @@ const Pool: FC = () => {
               res[i].signatures[s],
             ])) as `0x${string}`;
 
-            const isOwner = await metaMultiSigWallet?.read.isOwner([signer as string]);
+            const isOwner = await metaMultiSigWallet?.read.isOwner([signer as `0x${string}`]);
 
             if (signer && isOwner) {
               validSignatures.push({ signer, signature: res[i].signatures[s] });
