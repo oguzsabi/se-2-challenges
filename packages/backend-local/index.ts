@@ -3,6 +3,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import { AddressInfo } from "net";
+import { Database } from "./database.js";
 
 dotenv.config();
 
@@ -13,6 +14,7 @@ type Transaction = {
 };
 
 const app = express();
+const db = new Database().db;
 
 const transactions: { [key: string]: Transaction } = {};
 
@@ -23,7 +25,14 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.get("/:key", async (req, res) => {
   const { key } = req.params;
   console.log("Get /", key);
-  res.status(200).send(transactions[key] || {});
+
+  db.get(`SELECT * FROM transactions WHERE key = ?`, [key], (err, row) => {
+    if (err) {
+      return console.error(err.message);
+    }
+
+    res.status(200).send(row || {});
+  });
 });
 
 app.post("/", async (req, res) => {
@@ -31,10 +40,20 @@ app.post("/", async (req, res) => {
   res.send(req.body);
   const key = `${req.body.address}_${req.body.chainId}`;
   console.log("key:", key);
-  if (!transactions[key]) {
-    transactions[key] = {};
-  }
-  transactions[key][req.body.hash] = req.body;
+
+  db.run(
+    `INSERT INTO transactions(key, hash, value) VALUES(?, ?, ?)`,
+    [key, req.body.hash, req.body],
+    function (err) {
+      if (err) {
+        return console.log(err.message);
+      }
+
+      console.log(`A row has been inserted with rowid ${this.lastID}`);
+      res.status(200);
+    }
+  );
+
   console.log("transactions", transactions);
 });
 
