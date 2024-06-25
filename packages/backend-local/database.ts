@@ -4,8 +4,10 @@ import { Database as DatabaseType } from "sqlite3";
 export class Database {
   public readonly db: DatabaseType;
 
+  private readonly dbFilePath = './database.db';
+
   constructor() {
-    this.db = new sqlite3.Database(":memory:", (err) => {
+    this.db = new sqlite3.Database(this.dbFilePath, (err) => {
       if (err) {
         return console.error(err.message);
       }
@@ -14,7 +16,7 @@ export class Database {
     });
 
     this.db.run(
-      `CREATE TABLE transactions(
+      `CREATE TABLE IF NOT EXISTS transactions(
         key TEXT, 
         value TEXT, 
         hash TEXT,

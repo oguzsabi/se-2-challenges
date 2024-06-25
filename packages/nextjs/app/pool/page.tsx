@@ -13,6 +13,7 @@ import {
 } from "~~/hooks/scaffold-eth";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
 import { notification } from "~~/utils/scaffold-eth";
+import { Address } from "viem";
 
 const Pool: FC = () => {
   const [transactions, setTransactions] = useState<TransactionData[]>();
@@ -42,30 +43,32 @@ const Pool: FC = () => {
   useInterval(() => {
     const getTransactions = async () => {
       try {
-        const res: { [key: string]: TransactionData } = await (
+        const transactions: { key: Address; hash: TransactionData['hash']; value: TransactionData }[] = (await (
           await fetch(`${poolServerUrl}${contractInfo?.address}_${chainId}`)
-        ).json();
+        ).json() as { key: Address; hash: TransactionData['hash']; value: string }[]).map(tx => ({ ...tx, value: JSON.parse(tx.value as string) }));
 
         const newTransactions: TransactionData[] = [];
-        // eslint-disable-next-line no-restricted-syntax, guard-for-in
-        for (const i in res) {
+
+        for (const tx of transactions) {
           const validSignatures = [];
-          // eslint-disable-next-line guard-for-in, no-restricted-syntax
-          for (const s in res[i].signatures) {
+
+          for (const signature of tx.value.signatures) {
             const signer = (await metaMultiSigWallet?.read.recover([
-              res[i].hash as `0x${string}`,
-              res[i].signatures[s],
+              tx.hash,
+              signature,
             ])) as `0x${string}`;
 
             const isOwner = await metaMultiSigWallet?.read.isOwner([signer as `0x${string}`]);
 
             if (signer && isOwner) {
-              validSignatures.push({ signer, signature: res[i].signatures[s] });
+              validSignatures.push({ signer, signature });
             }
           }
-          const update: TransactionData = { ...res[i], validSignatures };
+
+          const update: TransactionData = { ...tx.value, validSignatures };
           newTransactions.push(update);
         }
+
         setTransactions(newTransactions);
       } catch (e) {
         notification.error("Error fetching transactions");
@@ -96,15 +99,15 @@ const Pool: FC = () => {
             {transactions === undefined
               ? "Loading..."
               : transactions.map(tx => {
-                  return (
-                    <TransactionItem
-                      key={tx.hash}
-                      tx={tx}
-                      completed={historyHashes.includes(tx.hash as `0x${string}`)}
-                      outdated={lastTx?.nonce != undefined && BigInt(tx.nonce) <= BigInt(lastTx?.nonce)}
-                    />
-                  );
-                })}
+                return (
+                  <TransactionItem
+                    key={tx.hash}
+                    tx={tx}
+                    completed={historyHashes.includes(tx.hash)}
+                    outdated={lastTx?.nonce != undefined && BigInt(tx.nonce) <= BigInt(lastTx?.nonce)}
+                  />
+                );
+              })}
           </div>
         </div>
       </div>

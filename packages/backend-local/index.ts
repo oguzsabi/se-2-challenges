@@ -26,13 +26,13 @@ app.get("/:key", async (req, res) => {
   const { key } = req.params;
   console.log("Get /", key);
 
-  db.get(`SELECT * FROM transactions WHERE key = ?`, [key], (err, row) => {
+db.all(`SELECT * FROM transactions WHERE key = ?`, [key], (err, row) => {
     if (err) {
       return console.error(err.message);
     }
 
     res.status(200).send(row || {});
-  });
+  });  
 });
 
 app.post("/", async (req, res) => {
@@ -43,7 +43,7 @@ app.post("/", async (req, res) => {
 
   db.run(
     `INSERT INTO transactions(key, hash, value) VALUES(?, ?, ?)`,
-    [key, req.body.hash, req.body],
+    [key, req.body.hash, JSON.stringify(req.body)],
     function (err) {
       if (err) {
         return console.log(err.message);
