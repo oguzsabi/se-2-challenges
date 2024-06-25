@@ -12,6 +12,7 @@ pragma solidity >=0.8.0 <0.9.0;
 // pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "hardhat/console.sol";
 
 contract MetaMultiSigWallet {
     using ECDSA for bytes32;
@@ -42,7 +43,7 @@ contract MetaMultiSigWallet {
         _;
     }
 
-    function addSigner(address newSigner, uint256 newSignaturesRequired) public onlySelf {
+    function addSigner(address newSigner, uint256 newSignaturesRequired) external onlySelf {
         require(newSigner != address(0), "addSigner: zero address");
         require(!isOwner[newSigner], "addSigner: owner not unique");
         require(newSignaturesRequired > 0, "addSigner: must be non-zero sigs required");
@@ -51,7 +52,7 @@ contract MetaMultiSigWallet {
         emit Owner(newSigner, isOwner[newSigner]);
     }
 
-    function removeSigner(address oldSigner, uint256 newSignaturesRequired) public onlySelf {
+    function removeSigner(address oldSigner, uint256 newSignaturesRequired) external onlySelf {
         require(isOwner[oldSigner], "removeSigner: not owner");
         require(newSignaturesRequired > 0, "removeSigner: must be non-zero sigs required");
         isOwner[oldSigner] = false;
@@ -59,17 +60,17 @@ contract MetaMultiSigWallet {
         emit Owner(oldSigner, isOwner[oldSigner]);
     }
 
-    function updateSignaturesRequired(uint256 newSignaturesRequired) public onlySelf {
+    function updateSignaturesRequired(uint256 newSignaturesRequired) external onlySelf {
         require(newSignaturesRequired > 0, "updateSignaturesRequired: must be non-zero sigs required");
         signaturesRequired = newSignaturesRequired;
     }
 
-    function getTransactionHash(uint256 _nonce, address to, uint256 value, bytes memory data) public view returns (bytes32) {
+    function getTransactionHash(uint256 _nonce, address to, uint256 value, bytes calldata data) public view returns (bytes32) {
         return keccak256(abi.encodePacked(address(this), chainId, _nonce, to, value, data));
     }
 
-    function executeTransaction(address payable to, uint256 value, bytes memory data, bytes[] memory signatures)
-        public
+    function executeTransaction(address payable to, uint256 value, bytes calldata data, bytes[] calldata signatures)
+        external
         returns (bytes memory)
     {
         require(isOwner[msg.sender], "executeTransaction: only owners can execute");
@@ -87,15 +88,18 @@ contract MetaMultiSigWallet {
         }
 
         require(validSignatures>=signaturesRequired, "executeTransaction: not enough valid signatures");
-
+        
+        console.log("Amount to be transferred:", value);
         (bool success, bytes memory result) = to.call{value: value}(data);
+        console.log("Status of the transaction:", success);
+        console.logBytes(result);
         require(success, "executeTransaction: tx failed");
 
         emit ExecuteTransaction(msg.sender, to, value, data, nonce-1, _hash, result);
         return result;
     }
 
-    function recover(bytes32 _hash, bytes memory _signature) public pure returns (address) {
+    function recover(bytes32 _hash, bytes calldata _signature) public pure returns (address) {
         return _hash.toEthSignedMessageHash().recover(_signature);
     }
 
@@ -118,7 +122,7 @@ contract MetaMultiSigWallet {
     }
     mapping(address => Stream) public streams;
 
-    function streamWithdraw(uint256 amount, string memory reason) public {
+    function streamWithdraw(uint256 amount, string calldata reason) external {
         require(streams[msg.sender].amount > 0, "withdraw: no open stream");
         _streamWithdraw(payable(msg.sender), amount, reason);
     }

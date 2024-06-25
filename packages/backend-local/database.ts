@@ -15,21 +15,33 @@ export class Database {
       console.log("Connected to the in-memory SQlite database.");
     });
 
-    this.db.run(
-      `CREATE TABLE IF NOT EXISTS transactions(
-        key TEXT, 
-        value TEXT, 
-        hash TEXT,
-        PRIMARY KEY(key),
-        UNIQUE(hash)
-      )`,
-      (err) => {
-        if (err) {
-          return console.error(err.message);
-        }
+    this.createTransactionTable();
+  }
 
-        console.log("Transactions table created.");
+  private createTransactionTable(): void {
+    this.db.run('DROP TABLE IF EXISTS transactions', (err) => {
+      if (err) {
+        return console.error(err.message);
       }
-    );
+
+      console.log("Transactions table dropped.");
+
+      this.db.run(
+        `CREATE TABLE transactions(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          key TEXT, 
+          value TEXT, 
+          hash TEXT,
+          UNIQUE(key, hash)
+        )`,
+        (err) => {
+          if (err) {
+            return console.error(err.message);
+          }
+
+          console.log("Transactions table created.");
+        }
+      );
+    });
   }
 }
