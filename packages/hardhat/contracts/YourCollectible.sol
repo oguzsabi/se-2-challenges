@@ -1,199 +1,420 @@
-//SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "base64-sol/base64.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "./HexStrings.sol";
-import "./ToColor.sol";
-
-//learn more: https://docs.openzeppelin.com/contracts/3.x/erc721
-
-// GET LISTED ON OPENSEA: https://testnets.opensea.io/get-listed/step-two
-
-contract YourCollectible is ERC721Enumerable, Ownable {
+contract YourCollectible is
+	ERC721Enumerable,
+	ReentrancyGuard,
+	Pausable,
+	Ownable
+{
 	using Strings for uint256;
-	using HexStrings for uint160;
-	using ToColor for bytes3;
-	using Counters for Counters.Counter;
-	Counters.Counter private _tokenIds;
 
-	// all funds go to buidlguidl.eth
-	address payable public constant recipient =
-		payable(0xa81a6a910FeD20374361B35C451a4a44F86CeD46);
+	bytes32 private lastHash;
+	uint256 private seed;
+	uint256 private constant COOLDOWN_PERIOD = 0 minutes;
+	uint256 private lastGenerationTimestamp;
+	mapping(address => uint256) private userLastRequestTimestamp;
+	mapping(address => uint256) private userRequestCount;
 
-	uint256 public constant limit = 3728;
-	uint256 public constant curve = 1002; // price increase 0,4% with each purchase
-	uint256 public price = 0.001 ether;
-	// the 1154th optimistic loogies cost 0.01 ETH, the 2306th cost 0.1ETH, the 3459th cost 1 ETH and the last ones cost 1.7 ETH
+	uint256 private tokenIdCounter;
 
-	mapping(uint256 => bytes3) public color;
-	mapping(uint256 => uint256) public chubbiness;
-	mapping(uint256 => uint256) public mouthLength;
-
-	constructor() ERC721("OptimisticLoogies", "OPLOOG") {
-		// RELEASE THE OPTIMISTIC LOOGIES!
+	struct GuacamoleAttributes {
+		uint256 bowlColor;
+		uint256 guacamoleColor;
+		uint8 numIngredientTypes;
+		uint256 ingredientSeed;
 	}
 
-	function mintItem() public payable returns (uint256) {
-		require(_tokenIds.current() < limit, "DONE MINTING");
-		require(msg.value >= price, "NOT ENOUGH");
+	mapping(uint256 => GuacamoleAttributes) private tokenIdToAttributes;
 
-		price = (price * curve) / 1000;
+	event RandomNumberRequested(address indexed requester, uint256 requestId);
+	event NFTMinted(address indexed owner, uint256 indexed tokenId);
+	event GuacamoleAttributesSet(
+		uint256 indexed tokenId,
+		uint256 bowlColor,
+		uint256 guacamoleColor,
+		uint8 numIngredientTypes,
+		uint256 ingredientSeed
+	);
 
-		_tokenIds.increment();
+	struct RandomRequest {
+		address requester;
+		uint256 requestTimestamp;
+		bytes32 userProvidedSeed;
+	}
 
-		uint256 id = _tokenIds.current();
-		_mint(msg.sender, id);
+	mapping(uint256 => RandomRequest) private randomRequests;
+	uint256 private requestIdCounter;
 
-		bytes32 predictableRandom = keccak256(
+	string[15] private ingredientColors = [
+		"#FF6347",
+		"#FFFFFF",
+		"#FF4500",
+		"#32CD32",
+		"#FFD700",
+		"#228B22",
+		"#98FB98",
+		"#8B0000",
+		"#FFD700",
+		"#4B0082",
+		"#00FF00",
+		"#F5F5DC",
+		"#00FF00",
+		"#FFFF00",
+		"#FFA500"
+	];
+
+	constructor(address initialOwner) ERC721("UbiquitousGuacamole", "GUAC") {
+		lastHash = blockhash(block.number - 1);
+		seed = uint256(
+			keccak256(
+				abi.encodePacked(block.timestamp, block.difficulty, msg.sender)
+			)
+		);
+		lastGenerationTimestamp = block.timestamp;
+
+		transferOwnership(initialOwner);
+	}
+
+	function requestMint()
+		external
+		nonReentrant
+		whenNotPaused
+		returns (uint256)
+	{
+		require(
+			block.timestamp - userLastRequestTimestamp[msg.sender] >= 5 minutes,
+			"Please wait before making another request"
+		);
+		require(
+			userRequestCount[msg.sender] < 5,
+			"Maximum request limit reached"
+		);
+
+		requestIdCounter++;
+		randomRequests[requestIdCounter] = RandomRequest({
+			requester: msg.sender,
+			requestTimestamp: block.timestamp,
+			userProvidedSeed: keccak256(
+				abi.encodePacked(msg.sender, block.timestamp, seed)
+			)
+		});
+
+		userLastRequestTimestamp[msg.sender] = block.timestamp;
+		userRequestCount[msg.sender]++;
+
+		emit RandomNumberRequested(msg.sender, requestIdCounter);
+
+		return requestIdCounter;
+	}
+
+	function fulfillMint(
+		uint256 requestId
+	) external nonReentrant whenNotPaused returns (uint256) {
+		require(
+			randomRequests[requestId].requester != address(0),
+			"Invalid request ID"
+		);
+		require(
+			block.timestamp - randomRequests[requestId].requestTimestamp >=
+				COOLDOWN_PERIOD,
+			"Please wait for the cooldown period"
+		);
+		require(
+			block.timestamp - lastGenerationTimestamp >= COOLDOWN_PERIOD,
+			"Generation cooldown period not met"
+		);
+
+		RandomRequest memory request = randomRequests[requestId];
+		delete randomRequests[requestId];
+
+		bytes32 newHash = keccak256(
 			abi.encodePacked(
-				id,
+				lastHash,
+				block.timestamp,
+				block.difficulty,
+				block.coinbase,
 				blockhash(block.number - 1),
 				msg.sender,
-				address(this)
+				seed,
+				request.userProvidedSeed,
+				tx.gasprice,
+				gasleft(),
+				address(this).balance,
+				request.requester.balance
 			)
 		);
-		color[id] =
-			bytes2(predictableRandom[0]) |
-			(bytes2(predictableRandom[1]) >> 8) |
-			(bytes3(predictableRandom[2]) >> 16);
-		chubbiness[id] =
-			35 +
-			((55 * uint256(uint8(predictableRandom[3]))) / 255);
-		// small chubiness loogies have small mouth
-		mouthLength[id] =
-			180 +
-			((uint256(chubbiness[id] / 4) *
-				uint256(uint8(predictableRandom[4]))) / 255);
 
-		(bool success, ) = recipient.call{ value: msg.value }("");
-		require(success, "could not send");
+		uint256 randomNumber = uint256(newHash);
 
-		return id;
+		lastHash = newHash;
+		seed = uint256(
+			keccak256(
+				abi.encodePacked(
+					seed,
+					randomNumber,
+					block.number,
+					request.userProvidedSeed
+				)
+			)
+		);
+		lastGenerationTimestamp = block.timestamp;
+
+		tokenIdCounter++;
+		uint256 newTokenId = tokenIdCounter;
+		uint256 guacamoleColor = generateGuaranteedGreen(randomNumber);
+
+		tokenIdToAttributes[newTokenId] = GuacamoleAttributes({
+			bowlColor: randomNumber % 0xFFFFFF,
+			guacamoleColor: guacamoleColor,
+			numIngredientTypes: uint8(((randomNumber >> 48) % 13) + 3), // 3 to 15 ingredient types
+			ingredientSeed: randomNumber
+		});
+
+		GuacamoleAttributes memory attrs = tokenIdToAttributes[newTokenId];
+
+		emit GuacamoleAttributesSet(
+			newTokenId,
+			attrs.bowlColor,
+			attrs.guacamoleColor,
+			attrs.numIngredientTypes,
+			attrs.ingredientSeed
+		);
+
+		_safeMint(request.requester, newTokenId);
+
+		emit NFTMinted(request.requester, newTokenId);
+
+		return newTokenId;
 	}
 
-	function tokenURI(uint256 id) public view override returns (string memory) {
-		require(_exists(id), "not exist");
-		string memory name = string(
-			abi.encodePacked("Loogie #", id.toString())
+	function generateGuaranteedGreen(
+		uint256 randomNumber
+	) private pure returns (uint256) {
+		uint256 red = (randomNumber >> (((randomNumber) % 4) + 1)) % 101; // 0-100
+		uint256 green = ((randomNumber) % 76) + 180; // 180-255
+		uint256 blue = (randomNumber >> (((randomNumber) % 8) + 2)) % 101; // 0-100
+
+		return (red << 16) | (green << 8) | blue;
+	}
+
+	function generateSVG(uint256 tokenId) public view returns (string memory) {
+		require(_exists(tokenId), "Token does not exist");
+		GuacamoleAttributes memory attrs = tokenIdToAttributes[tokenId];
+
+		string memory bowlSVG = generateBowlSVG(
+			attrs.bowlColor,
+			attrs.guacamoleColor
 		);
-		string memory description = string(
-			abi.encodePacked(
-				"This Loogie is the color #",
-				color[id].toColor(),
-				" with a chubbiness of ",
-				uint2str(chubbiness[id]),
-				" and mouth length of ",
-				uint2str(mouthLength[id]),
-				"!!!"
-			)
+		string memory ingredientsSVG = generateIngredientsSVG(
+			attrs.numIngredientTypes,
+			attrs.ingredientSeed
 		);
-		string memory image = Base64.encode(bytes(generateSVGofTokenById(id)));
 
 		return
-			string(
-				abi.encodePacked(
-					"data:application/json;base64,",
-					Base64.encode(
-						bytes(
-							abi.encodePacked(
-								'{"name":"',
-								name,
-								'", "description":"',
-								description,
-								'", "external_url":"https://burnyboys.com/token/',
-								id.toString(),
-								'", "attributes": [{"trait_type": "color", "value": "#',
-								color[id].toColor(),
-								'"},{"trait_type": "chubbiness", "value": ',
-								uint2str(chubbiness[id]),
-								'},{"trait_type": "mouthLength", "value": ',
-								uint2str(mouthLength[id]),
-								'}], "owner":"',
-								(uint160(ownerOf(id))).toHexString(20),
-								'", "image": "',
-								"data:image/svg+xml;base64,",
-								image,
-								'"}'
-							)
-						)
-					)
-				)
+			string.concat(
+				'<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">',
+				bowlSVG,
+				ingredientsSVG,
+				"</svg>"
 			);
 	}
 
-	function generateSVGofTokenById(
-		uint256 id
-	) internal view returns (string memory) {
-		string memory svg = string(
-			abi.encodePacked(
-				'<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">',
-				renderTokenById(id),
-				"</svg>"
+	function generateBowlSVG(
+		uint256 bowlColor,
+		uint256 guacamoleColor
+	) private pure returns (string memory) {
+		return
+			string.concat(
+				'<circle cx="100" cy="100" r="90" fill="',
+				toColorHexString(bowlColor),
+				'" />',
+				'<circle cx="100" cy="100" r="85" fill="#A0522D" />',
+				'<circle cx="100" cy="100" r="75" fill="',
+				toColorHexString(guacamoleColor),
+				'" />'
+			);
+	}
+
+	function generateIngredientsSVG(
+		uint8 numIngredientTypes,
+		uint256 ingredientSeed
+	) private view returns (string memory) {
+		string memory ingredientsSVG = "";
+		for (uint i = 0; i < numIngredientTypes; i++) {
+			ingredientsSVG = string.concat(
+				ingredientsSVG,
+				generateIngredientTypeSVG(ingredientSeed)
+			);
+			ingredientSeed = uint256(
+				keccak256(abi.encodePacked(ingredientSeed))
+			);
+		}
+		return ingredientsSVG;
+	}
+
+	function generateIngredientTypeSVG(
+		uint256 ingredientSeed
+	) private view returns (string memory) {
+		string memory ingredientColor = ingredientColors[ingredientSeed % 15];
+		uint256 numIngredients = (ingredientSeed % 18) + 3; // 3 to 20 ingredients
+		string memory typeSVG = "";
+
+		for (uint j = 0; j < numIngredients; j++) {
+			(
+				uint256 cx,
+				uint256 cy,
+				uint256 newSeed
+			) = generateIngredientPosition(ingredientSeed);
+			ingredientSeed = newSeed;
+
+			if (isWithinBowl(cx, cy)) {
+				typeSVG = string.concat(
+					typeSVG,
+					generateSingleIngredientSVG(
+						cx,
+						cy,
+						ingredientColor,
+						ingredientSeed
+					)
+				);
+			}
+		}
+
+		return typeSVG;
+	}
+
+	function generateIngredientPosition(
+		uint256 ingredientSeed
+	) private pure returns (uint256 cx, uint256 cy, uint256 newSeed) {
+		cx = (ingredientSeed % 141) + 30; // 30 to 170
+		ingredientSeed >>= 8;
+		cy = (ingredientSeed % 141) + 30; // 30 to 170
+		newSeed = ingredientSeed >> 8;
+		return (cx, cy, newSeed);
+	}
+
+	function generateSingleIngredientSVG(
+		uint256 cx,
+		uint256 cy,
+		string memory color,
+		uint256 ingredientSeed
+	) private pure returns (string memory) {
+		uint256 rx = (ingredientSeed % 4) + 3; // 3 to 6
+		ingredientSeed >>= 2;
+		uint256 ry = (ingredientSeed % 4) + 3; // 3 to 6
+		ingredientSeed >>= 2;
+		uint256 rotation = ingredientSeed % 360;
+
+		return
+			string.concat(
+				'<ellipse cx="',
+				cx.toString(),
+				'" cy="',
+				cy.toString(),
+				'" rx="',
+				rx.toString(),
+				'" ry="',
+				ry.toString(),
+				'" fill="',
+				color,
+				'" transform="rotate(',
+				rotation.toString(),
+				",",
+				cx.toString(),
+				",",
+				cy.toString(),
+				')" />'
+			);
+	}
+
+	function isWithinBowl(uint256 x, uint256 y) private pure returns (bool) {
+		unchecked {
+			if (x > 100) x -= 100;
+			else x = 100 - x;
+			if (y > 100) y -= 100;
+			else y = 100 - y;
+			return (x * x + y * y) <= 4900; // 70^2
+		}
+	}
+
+	function tokenURI(
+		uint256 tokenId
+	) public view override returns (string memory) {
+		require(_exists(tokenId), "Token does not exist");
+		string memory svg = generateSVG(tokenId);
+		string memory json = Base64.encode(
+			bytes(
+				string(
+					abi.encodePacked(
+						'{"name": "Guacamole #',
+						tokenId.toString(),
+						'", "description": "A randomly generated guacamole bowl", "image": "data:image/svg+xml;base64,',
+						Base64.encode(bytes(svg)),
+						'"}'
+					)
+				)
 			)
 		);
 
-		return svg;
+		return string(abi.encodePacked("data:application/json;base64,", json));
 	}
 
-	// Visibility is `public` to enable it being called by other contracts for composition.
-	function renderTokenById(uint256 id) public view returns (string memory) {
-		// the translate function for the mouth is based on the curve y = 810/11 - 9x/11
-		string memory render = string(
-			abi.encodePacked(
-				'<g id="eye1">',
-				'<ellipse stroke-width="3" ry="29.5" rx="29.5" id="svg_1" cy="154.5" cx="181.5" stroke="#000" fill="#fff"/>',
-				'<ellipse ry="3.5" rx="2.5" id="svg_3" cy="154.5" cx="173.5" stroke-width="3" stroke="#000" fill="#000000"/>',
-				"</g>",
-				'<g id="head">',
-				'<ellipse fill="#',
-				color[id].toColor(),
-				'" stroke-width="3" cx="204.5" cy="211.80065" id="svg_5" rx="',
-				chubbiness[id].toString(),
-				'" ry="51.80065" stroke="#000"/>',
-				"</g>",
-				'<g id="eye2">',
-				'<ellipse stroke-width="3" ry="29.5" rx="29.5" id="svg_2" cy="168.5" cx="209.5" stroke="#000" fill="#fff"/>',
-				'<ellipse ry="3.5" rx="3" id="svg_4" cy="169.5" cx="208" stroke-width="3" fill="#000000" stroke="#000"/>',
-				"</g>"
-				'<g class="mouth" transform="translate(',
-				uint256((810 - 9 * chubbiness[id]) / 11).toString(),
-				',0)">',
-				'<path d="M 130 240 Q 165 250 ',
-				mouthLength[id].toString(),
-				' 235" stroke="black" stroke-width="3" fill="transparent"/>',
-				"</g>"
-			)
+	function toColorHexString(
+		uint256 color
+	) private pure returns (string memory) {
+		bytes memory buffer = new bytes(7);
+		buffer[0] = "#";
+
+		bytes16 alphabet = "0123456789ABCDEF";
+
+		for (uint256 i = 6; i > 0; i--) {
+			buffer[i] = alphabet[color & 0xF];
+			color >>= 4;
+		}
+
+		return string(buffer);
+	}
+
+	receive() external payable {
+		seed = uint256(
+			keccak256(abi.encodePacked(seed, msg.value, block.timestamp))
 		);
-
-		return render;
 	}
 
-	function uint2str(
-		uint _i
-	) internal pure returns (string memory _uintAsString) {
-		if (_i == 0) {
-			return "0";
-		}
-		uint j = _i;
-		uint len;
-		while (j != 0) {
-			len++;
-			j /= 10;
-		}
-		bytes memory bstr = new bytes(len);
-		uint k = len;
-		while (_i != 0) {
-			k = k - 1;
-			uint8 temp = (48 + uint8(_i - (_i / 10) * 10));
-			bytes1 b1 = bytes1(temp);
-			bstr[k] = b1;
-			_i /= 10;
-		}
-		return string(bstr);
+	function pause() external onlyOwner {
+		_pause();
+	}
+
+	function unpause() external onlyOwner {
+		_unpause();
+	}
+
+	function withdraw() external onlyOwner {
+		(bool success, ) = msg.sender.call{ value: address(this).balance }("");
+		require(success, "Transfer failed.");
+	}
+
+	function viewMintRequest(
+		uint256 requestId
+	) external view returns (address, uint256) {
+		RandomRequest memory request = randomRequests[requestId];
+		return (request.requester, request.requestTimestamp);
+	}
+
+	function cancelMintRequest(uint256 requestId) external {
+		require(
+			randomRequests[requestId].requester == msg.sender,
+			"Not your request"
+		);
+		delete randomRequests[requestId];
+		userRequestCount[msg.sender]--;
 	}
 }

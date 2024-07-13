@@ -24,7 +24,7 @@ const deployYourCollectible: DeployFunction = async function (hre: HardhatRuntim
   await deploy("YourCollectible", {
     from: deployer,
     // Contract constructor arguments
-    args: [],
+    args: ['0x521217dB30309E3C9eA293C5C76CD2eB2A453F8e'],
     log: true,
     // autoMine: can be passed to the deploy function to make the deployment process faster on local networks by
     // automatically mining the contract deployment transaction. There is no effect on live networks.

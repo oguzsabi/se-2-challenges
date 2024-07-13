@@ -30,6 +30,12 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  gasReporter: {
+    enabled: true,
+    currency: 'USD',
+    gasPrice: 3,
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+  },
   defaultNetwork: "localhost",
   namedAccounts: {
     deployer: {

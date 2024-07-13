@@ -3,44 +3,49 @@
 //
 
 import { ethers } from "hardhat";
-import { YourContract } from "../typechain-types/contracts/YourContract";
+import { YourCollectible } from "../typechain-types/contracts/YourCollectible";
 import { expect } from "chai";
+import { Transaction } from "ethers";
 
-describe("🚩 Challenge N: Description", function () {
-  // Change to name and type of your contract
-  let yourContract: YourContract;
+describe("YourCollectible", function () {
+  let yourCollectible: YourCollectible;
+  let owner;
 
-  describe("Deployment", function () {
-    const contractAddress = process.env.CONTRACT_ADDRESS;
-
-    // Don't change contractArtifact creation
-    let contractArtifact: string;
-    if (contractAddress) {
-      // For the autograder.
-      contractArtifact = `contracts/download-${contractAddress}.sol:YourContract`;
-    } else {
-      contractArtifact = "contracts/YourContract.sol:YourContract";
-    }
-
-    it("Should deploy the contract", async function () {
-      const [owner] = await ethers.getSigners();
-      const yourContractFactory = await ethers.getContractFactory(contractArtifact);
-      yourContract = (await yourContractFactory.deploy(owner.address)) as YourContract;
-      console.log("\t", " 🛰  Contract deployed on", await yourContract.getAddress());
-    });
+  beforeEach(async function () {
+    [owner] = await ethers.getSigners();
+    const YourCollectible = await ethers.getContractFactory("YourCollectible");
+    yourCollectible = await YourCollectible.deploy(owner.address);
+    await yourCollectible.waitForDeployment();
   });
 
-  // Test group example
-  describe("Initialization and change of greeting", function () {
-    it("Should have the right message on deploy", async function () {
-      expect(await yourContract.greeting()).to.equal("Building Unstoppable Apps!!!");
-    });
+  it("should analyze generateSVG function", async function () {
+    // First, mint an NFT
+    await yourCollectible.requestMint();
+    await yourCollectible.fulfillMint(1);
 
-    it("Should allow setting a new message", async function () {
-      const newGreeting = "Learn Scaffold-ETH 2! :)";
+    // Call generateSVG
+    const svg = await yourCollectible.generateSVG(1);
+    console.log("SVG length:", svg.length);
 
-      await yourContract.setGreeting(newGreeting);
-      expect(await yourContract.greeting()).to.equal(newGreeting);
-    });
+    // Estimate gas (this doesn't reflect actual cost for external calls)
+    const estimatedGas = await yourCollectible.generateSVG.estimateGas(1);
+    console.log("Estimated gas for generateSVG (if called internally):", estimatedGas.toString());
+
+    // You can add assertions here if needed
+    // expect(svg).to.include("<svg");
+    // expect(estimatedGas).to.be.lt(1000000);  // Example threshold
+  });
+
+  it("should measure impact of generateSVG on minting", async function () {
+    await yourCollectible.requestMint();
+
+    // Estimate gas for minting (which internally calls generateSVG)
+    const estimatedGas = await yourCollectible.fulfillMint.estimateGas(1);
+    console.log("Estimated gas for fulfillMint (including generateSVG):", estimatedGas.toString());
+
+    // Perform the actual mint
+    const tx = await yourCollectible.fulfillMint(1);
+    const receipt = await tx.wait();
+    console.log("Actual gas used for fulfillMint:", receipt?.gasUsed.toString());
   });
 });
