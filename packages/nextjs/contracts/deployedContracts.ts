@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   31337: {
     YourCollectible: {
-      address: "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
+      address: "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
       abi: [
         {
           inputs: [
@@ -68,43 +68,6 @@ const deployedContracts = {
             },
           ],
           name: "ApprovalForAll",
-          type: "event",
-        },
-        {
-          anonymous: false,
-          inputs: [
-            {
-              indexed: true,
-              internalType: "uint256",
-              name: "tokenId",
-              type: "uint256",
-            },
-            {
-              indexed: false,
-              internalType: "uint256",
-              name: "bowlColor",
-              type: "uint256",
-            },
-            {
-              indexed: false,
-              internalType: "uint256",
-              name: "guacamoleColor",
-              type: "uint256",
-            },
-            {
-              indexed: false,
-              internalType: "uint8",
-              name: "numIngredientTypes",
-              type: "uint8",
-            },
-            {
-              indexed: false,
-              internalType: "uint256",
-              name: "ingredientSeed",
-              type: "uint256",
-            },
-          ],
-          name: "GuacamoleAttributesSet",
           type: "event",
         },
         {
@@ -214,6 +177,19 @@ const deployedContracts = {
           ],
           name: "Unpaused",
           type: "event",
+        },
+        {
+          inputs: [],
+          name: "MAX_SUPPLY",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
         },
         {
           inputs: [

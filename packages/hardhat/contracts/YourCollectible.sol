@@ -16,12 +16,13 @@ contract YourCollectible is
 {
 	using Strings for uint256;
 
+	uint256 public constant MAX_SUPPLY = 5000;
+
 	bytes32 private lastHash;
 	uint256 private seed;
 	uint256 private constant COOLDOWN_PERIOD = 0 minutes;
 	uint256 private lastGenerationTimestamp;
-	mapping(address => uint256) private userLastRequestTimestamp;
-	mapping(address => uint256) private userRequestCount;
+	mapping(address => uint256) private userRequestData;
 
 	uint256 private tokenIdCounter;
 
@@ -36,39 +37,32 @@ contract YourCollectible is
 
 	event RandomNumberRequested(address indexed requester, uint256 requestId);
 	event NFTMinted(address indexed owner, uint256 indexed tokenId);
-	event GuacamoleAttributesSet(
-		uint256 indexed tokenId,
-		uint256 bowlColor,
-		uint256 guacamoleColor,
-		uint8 numIngredientTypes,
-		uint256 ingredientSeed
-	);
 
 	struct RandomRequest {
 		address requester;
 		uint256 requestTimestamp;
-		bytes32 userProvidedSeed;
+		bytes32 requesterSpecificSeed;
 	}
 
 	mapping(uint256 => RandomRequest) private randomRequests;
 	uint256 private requestIdCounter;
 
 	string[15] private ingredientColors = [
-		"#FF6347",
-		"#FFFFFF",
-		"#FF4500",
-		"#32CD32",
-		"#FFD700",
-		"#228B22",
-		"#98FB98",
-		"#8B0000",
-		"#FFD700",
-		"#4B0082",
-		"#00FF00",
-		"#F5F5DC",
-		"#00FF00",
-		"#FFFF00",
-		"#FFA500"
+		"#FF6347", // tomato
+		"#FFFFFF", // onion
+		"#FF4500", // red bell pepper
+		"#32CD32", // cilantro
+		"#FFD700", // mango
+		"#228B22", // jalapeno
+		"#98FB98", // avocado chunks
+		"#8B0000", // red onion
+		"#FFD700", // corn
+		"#4B0082", // black beans
+		"#00FF00", // lime
+		"#F5F5DC", // garlic
+		"#00FF00", // green pepper
+		"#FFFF00", // yellow pepper
+		"#FFA500" // carrot
 	];
 
 	constructor(address initialOwner) ERC721("UbiquitousGuacamole", "GUAC") {
@@ -89,26 +83,30 @@ contract YourCollectible is
 		whenNotPaused
 		returns (uint256)
 	{
+		require(totalSupply() < MAX_SUPPLY, "Maximum supply reached");
+
+		uint256 userData = userRequestData[msg.sender];
+		uint256 lastRequestTime = userData & 0xFFFFFFFFFFFFFFFF; // Extract lower 64 bits
+		uint256 requestCount = userData >> 64; // Extract upper 64 bits
+
 		require(
-			block.timestamp - userLastRequestTimestamp[msg.sender] >= 5 minutes,
+			block.timestamp - lastRequestTime >= 5 minutes,
 			"Please wait before making another request"
 		);
-		require(
-			userRequestCount[msg.sender] < 5,
-			"Maximum request limit reached"
-		);
+		require(requestCount < 5, "Maximum request limit reached");
 
-		requestIdCounter++;
-		randomRequests[requestIdCounter] = RandomRequest({
+		// Update user request data
+		userRequestData[msg.sender] =
+			((requestCount + 1) << 64) |
+			uint64(block.timestamp);
+
+		randomRequests[++requestIdCounter] = RandomRequest({
 			requester: msg.sender,
 			requestTimestamp: block.timestamp,
-			userProvidedSeed: keccak256(
+			requesterSpecificSeed: keccak256(
 				abi.encodePacked(msg.sender, block.timestamp, seed)
 			)
 		});
-
-		userLastRequestTimestamp[msg.sender] = block.timestamp;
-		userRequestCount[msg.sender]++;
 
 		emit RandomNumberRequested(msg.sender, requestIdCounter);
 
@@ -144,7 +142,7 @@ contract YourCollectible is
 				blockhash(block.number - 1),
 				msg.sender,
 				seed,
-				request.userProvidedSeed,
+				request.requesterSpecificSeed,
 				tx.gasprice,
 				gasleft(),
 				address(this).balance,
@@ -161,32 +159,15 @@ contract YourCollectible is
 					seed,
 					randomNumber,
 					block.number,
-					request.userProvidedSeed
+					request.requesterSpecificSeed
 				)
 			)
 		);
 		lastGenerationTimestamp = block.timestamp;
 
-		tokenIdCounter++;
-		uint256 newTokenId = tokenIdCounter;
-		uint256 guacamoleColor = generateGuaranteedGreen(randomNumber);
+		uint256 newTokenId = ++tokenIdCounter;
 
-		tokenIdToAttributes[newTokenId] = GuacamoleAttributes({
-			bowlColor: randomNumber % 0xFFFFFF,
-			guacamoleColor: guacamoleColor,
-			numIngredientTypes: uint8(((randomNumber >> 48) % 13) + 3), // 3 to 15 ingredient types
-			ingredientSeed: randomNumber
-		});
-
-		GuacamoleAttributes memory attrs = tokenIdToAttributes[newTokenId];
-
-		emit GuacamoleAttributesSet(
-			newTokenId,
-			attrs.bowlColor,
-			attrs.guacamoleColor,
-			attrs.numIngredientTypes,
-			attrs.ingredientSeed
-		);
+		setGuacamoleAttributes(newTokenId, randomNumber);
 
 		_safeMint(request.requester, newTokenId);
 
@@ -195,14 +176,29 @@ contract YourCollectible is
 		return newTokenId;
 	}
 
+	function setGuacamoleAttributes(
+		uint256 tokenId,
+		uint256 randomNumber
+	) private {
+		tokenIdToAttributes[tokenId] = GuacamoleAttributes({
+			bowlColor: randomNumber % 0xFFFFFF,
+			guacamoleColor: generateGuaranteedGreen(randomNumber),
+			numIngredientTypes: uint8(((randomNumber >> 48) % 13) + 3), // 3 to 15 ingredient types
+			ingredientSeed: randomNumber
+		});
+	}
+
 	function generateGuaranteedGreen(
 		uint256 randomNumber
 	) private pure returns (uint256) {
-		uint256 red = (randomNumber >> (((randomNumber) % 4) + 1)) % 101; // 0-100
-		uint256 green = ((randomNumber) % 76) + 180; // 180-255
-		uint256 blue = (randomNumber >> (((randomNumber) % 8) + 2)) % 101; // 0-100
-
-		return (red << 16) | (green << 8) | blue;
+		unchecked {
+			uint256 red = ((randomNumber >> (((randomNumber) % 4) + 1)) &
+				0xFF) % 101; // 0-100
+			uint256 green = ((randomNumber & 0xFF) % 76) + 180; // 180-255
+			uint256 blue = ((randomNumber >> (((randomNumber) % 8) + 2)) &
+				0xFF) % 101; // 0-100
+			return (red << 16) | (green << 8) | blue;
+		}
 	}
 
 	function generateSVG(uint256 tokenId) public view returns (string memory) {
@@ -248,7 +244,7 @@ contract YourCollectible is
 		uint256 ingredientSeed
 	) private view returns (string memory) {
 		string memory ingredientsSVG = "";
-		for (uint i = 0; i < numIngredientTypes; i++) {
+		for (uint i = 0; i < numIngredientTypes; ) {
 			ingredientsSVG = string.concat(
 				ingredientsSVG,
 				generateIngredientTypeSVG(ingredientSeed)
@@ -256,6 +252,10 @@ contract YourCollectible is
 			ingredientSeed = uint256(
 				keccak256(abi.encodePacked(ingredientSeed))
 			);
+
+			unchecked {
+				++i;
+			}
 		}
 		return ingredientsSVG;
 	}
@@ -267,7 +267,7 @@ contract YourCollectible is
 		uint256 numIngredients = (ingredientSeed % 18) + 3; // 3 to 20 ingredients
 		string memory typeSVG = "";
 
-		for (uint j = 0; j < numIngredients; j++) {
+		for (uint j = 0; j < numIngredients; ) {
 			(
 				uint256 cx,
 				uint256 cy,
@@ -285,6 +285,10 @@ contract YourCollectible is
 						ingredientSeed
 					)
 				);
+			}
+
+			unchecked {
+				++j;
 			}
 		}
 
@@ -375,9 +379,13 @@ contract YourCollectible is
 
 		bytes16 alphabet = "0123456789ABCDEF";
 
-		for (uint256 i = 6; i > 0; i--) {
+		for (uint256 i = 6; i > 0; ) {
 			buffer[i] = alphabet[color & 0xF];
 			color >>= 4;
+
+			unchecked {
+				--i;
+			}
 		}
 
 		return string(buffer);
@@ -415,6 +423,13 @@ contract YourCollectible is
 			"Not your request"
 		);
 		delete randomRequests[requestId];
-		userRequestCount[msg.sender]--;
+
+		uint256 userData = userRequestData[msg.sender];
+		uint256 requestCount = userData >> 64;
+		uint256 lastRequestTime = userData & 0xFFFFFFFFFFFFFFFF;
+
+		userRequestData[msg.sender] =
+			((--requestCount) << 64) |
+			lastRequestTime;
 	}
 }
