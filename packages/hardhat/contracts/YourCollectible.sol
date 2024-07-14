@@ -17,7 +17,6 @@ contract YourCollectible is
 	using Strings for uint256;
 
 	uint256 public constant MAX_SUPPLY = 5000;
-
 	bytes32 private lastHash;
 	uint256 private seed;
 	uint256 private constant COOLDOWN_PERIOD = 0 minutes;
@@ -97,7 +96,7 @@ contract YourCollectible is
 
 		// Update user request data
 		userRequestData[msg.sender] =
-			((requestCount + 1) << 64) |
+			((++requestCount) << 64) |
 			uint64(block.timestamp);
 
 		randomRequests[++requestIdCounter] = RandomRequest({
@@ -116,13 +115,11 @@ contract YourCollectible is
 	function fulfillMint(
 		uint256 requestId
 	) external nonReentrant whenNotPaused returns (uint256) {
+		RandomRequest memory request = randomRequests[requestId];
+
+		require(request.requester != address(0), "Invalid request ID");
 		require(
-			randomRequests[requestId].requester != address(0),
-			"Invalid request ID"
-		);
-		require(
-			block.timestamp - randomRequests[requestId].requestTimestamp >=
-				COOLDOWN_PERIOD,
+			block.timestamp - request.requestTimestamp >= COOLDOWN_PERIOD,
 			"Please wait for the cooldown period"
 		);
 		require(
@@ -130,7 +127,6 @@ contract YourCollectible is
 			"Generation cooldown period not met"
 		);
 
-		RandomRequest memory request = randomRequests[requestId];
 		delete randomRequests[requestId];
 
 		bytes32 newHash = keccak256(
@@ -192,11 +188,9 @@ contract YourCollectible is
 		uint256 randomNumber
 	) private pure returns (uint256) {
 		unchecked {
-			uint256 red = ((randomNumber >> (((randomNumber) % 4) + 1)) &
-				0xFF) % 101; // 0-100
+			uint256 red = ((randomNumber >> 8) & 0xFF) % 101; // 0-100
 			uint256 green = ((randomNumber & 0xFF) % 76) + 180; // 180-255
-			uint256 blue = ((randomNumber >> (((randomNumber) % 8) + 2)) &
-				0xFF) % 101; // 0-100
+			uint256 blue = ((randomNumber >> 16) & 0xFF) % 101; // 0-100
 			return (red << 16) | (green << 8) | blue;
 		}
 	}
@@ -354,13 +348,41 @@ contract YourCollectible is
 	) public view override returns (string memory) {
 		require(_exists(tokenId), "Token does not exist");
 		string memory svg = generateSVG(tokenId);
+		GuacamoleAttributes memory guacamoleAttributes = tokenIdToAttributes[
+			tokenId
+		];
+		string memory bowlColor = toColorHexString(
+			guacamoleAttributes.bowlColor
+		);
+		string memory guacamoleColor = toColorHexString(
+			guacamoleAttributes.guacamoleColor
+		);
+		string memory numberOfIngredientTypes = uint256(
+			guacamoleAttributes.numIngredientTypes
+		).toString();
+
 		string memory json = Base64.encode(
 			bytes(
 				string(
 					abi.encodePacked(
 						'{"name": "Guacamole #',
 						tokenId.toString(),
-						'", "description": "A randomly generated guacamole bowl", "image": "data:image/svg+xml;base64,',
+						'", "bowlColor": "',
+						bowlColor,
+						'", "guacamoleColor": "',
+						guacamoleColor,
+						'", "numIngredientTypes": ',
+						numberOfIngredientTypes,
+						', "ingredientSeed": "',
+						guacamoleAttributes.ingredientSeed.toString(),
+						'", "description": "A generative guacamole NFT. The bowl color is ',
+						bowlColor,
+						" and the guacamole color is ",
+						guacamoleColor,
+						". It has ",
+						numberOfIngredientTypes,
+						" ingredient types.",
+						'", "image": "data:image/svg+xml;base64,',
 						Base64.encode(bytes(svg)),
 						'"}'
 					)
