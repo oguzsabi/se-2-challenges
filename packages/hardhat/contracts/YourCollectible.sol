@@ -19,7 +19,7 @@ contract YourCollectible is
 	uint256 public constant MAX_SUPPLY = 5000;
 	bytes32 private lastHash;
 	uint256 private seed;
-	uint256 private constant COOLDOWN_PERIOD = 0 minutes;
+	uint256 private constant COOLDOWN_PERIOD = 5 minutes;
 	uint256 private lastGenerationTimestamp;
 	mapping(address => uint256) private userRequestData;
 

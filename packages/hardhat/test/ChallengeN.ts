@@ -25,6 +25,7 @@ describe("YourCollectible", function () {
     it("should analyze generateSVG function", async function () {
       // First, mint an NFT
       await yourCollectible.requestMint();
+      await increaseTime();
       await yourCollectible.fulfillMint(1);
 
       // Call generateSVG
@@ -38,6 +39,7 @@ describe("YourCollectible", function () {
 
     it("should measure impact of generateSVG on minting", async function () {
       await yourCollectible.requestMint();
+      await increaseTime();
 
       // Estimate gas for minting (which internally calls generateSVG)
       const estimatedGas = await yourCollectible.fulfillMint.estimateGas(1);
@@ -86,6 +88,7 @@ describe("YourCollectible", function () {
 
     it("Should allow fulfilling a mint request", async function () {
       await yourCollectible.connect(addr1).requestMint();
+      await increaseTime();
       await expect(yourCollectible.connect(addr1).fulfillMint(1))
         .to.emit(yourCollectible, "NFTMinted")
         .withArgs(addr1.address, 1);
@@ -113,10 +116,12 @@ describe("YourCollectible", function () {
   describe("Token Attributes", function () {
     it("Should generate unique attributes for each token", async function () {
       await yourCollectible.connect(addr1).requestMint();
+      await increaseTime();
       await yourCollectible.connect(addr1).fulfillMint(1);
       await ethers.provider.send("evm_increaseTime", [300]); // 5 minutes
       await ethers.provider.send("evm_mine");
       await yourCollectible.connect(addr1).requestMint();
+      await increaseTime();
       await yourCollectible.connect(addr1).fulfillMint(2);
 
       const svg1 = await yourCollectible.generateSVG(1);
@@ -126,6 +131,7 @@ describe("YourCollectible", function () {
 
     it("Should generate a green color for guacamole", async function () {
       await yourCollectible.connect(addr1).requestMint();
+      await increaseTime();
       await yourCollectible.connect(addr1).fulfillMint(1);
       const svg = await yourCollectible.generateSVG(1);
       expect(svg).to.include('fill="#');
@@ -141,6 +147,7 @@ describe("YourCollectible", function () {
   describe("Token URI", function () {
     it("Should return a valid token URI", async function () {
       await yourCollectible.connect(addr1).requestMint();
+      await increaseTime();
       await yourCollectible.connect(addr1).fulfillMint(1);
       const tokenURI = await yourCollectible.tokenURI(1);
       expect(tokenURI).to.include("data:application/json;base64,");
@@ -198,11 +205,17 @@ describe("YourCollectible", function () {
         .to.be.revertedWith("Maximum request limit reached");
     });
 
-    it("Should handle multiple users minting simultaneously", async function () {
-      const mintPromises = addrs.map(addr => yourCollectible.connect(addr).requestMint());
-      await Promise.all(mintPromises);
-      for (let i = 0; i < addrs.length; i++) {
+    it("Should handle multiple users minting", async function () {
+      const numUsers = Math.min(5, addrs.length); // Use up to 5 users or less if not enough addresses
+
+      for (let i = 0; i < numUsers; i++) {
+        await yourCollectible.connect(addrs[i]).requestMint();
+        await increaseTime();
+      }
+
+      for (let i = 0; i < numUsers; i++) {
         await expect(yourCollectible.connect(addrs[i]).fulfillMint(i + 1)).to.not.be.reverted;
+        await increaseTime();
       }
     });
 
@@ -244,5 +257,10 @@ function getGuacamoleColor(svgString: string): string | null {
   }
 
   return null;
+}
+
+async function increaseTime(seconds: number = 301): Promise<void> {
+  await ethers.provider.send("evm_increaseTime", [seconds]);
+  await ethers.provider.send("evm_mine", []);
 }
 
