@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "solady/src/utils/LibString.sol";
+import "solady/src/utils/DynamicBufferLib.sol";
 
 contract YourCollectible is
 	ERC721Enumerable,
@@ -15,11 +17,12 @@ contract YourCollectible is
 	Ownable
 {
 	using Strings for uint256;
+	using DynamicBufferLib for DynamicBufferLib.DynamicBuffer;
 
 	uint256 public constant MAX_SUPPLY = 5000;
 	bytes32 private lastHash;
 	uint256 private seed;
-	uint256 private constant COOLDOWN_PERIOD = 5 minutes;
+	uint256 private constant COOLDOWN_PERIOD = 0 minutes;
 	uint256 private lastGenerationTimestamp;
 	mapping(address => uint256) private userRequestData;
 
@@ -198,51 +201,48 @@ contract YourCollectible is
 	function generateSVG(uint256 tokenId) public view returns (string memory) {
 		require(_exists(tokenId), "Token does not exist");
 		GuacamoleAttributes memory attrs = tokenIdToAttributes[tokenId];
+		DynamicBufferLib.DynamicBuffer memory buffer;
 
-		string memory bowlSVG = generateBowlSVG(
-			attrs.bowlColor,
-			attrs.guacamoleColor
+		buffer.p(
+			'<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">'
 		);
-		string memory ingredientsSVG = generateIngredientsSVG(
-			attrs.numIngredientTypes,
-			attrs.ingredientSeed
+		buffer.p(generateBowlSVG(attrs.bowlColor, attrs.guacamoleColor));
+		buffer.p(
+			generateIngredientsSVG(
+				attrs.numIngredientTypes,
+				attrs.ingredientSeed
+			)
 		);
+		buffer.p("</svg>");
 
-		return
-			string.concat(
-				'<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">',
-				bowlSVG,
-				ingredientsSVG,
-				"</svg>"
-			);
+		return buffer.s();
 	}
 
 	function generateBowlSVG(
 		uint256 bowlColor,
 		uint256 guacamoleColor
-	) private pure returns (string memory) {
-		return
-			string.concat(
-				'<circle cx="100" cy="100" r="90" fill="',
-				toColorHexString(bowlColor),
-				'" />',
-				'<circle cx="100" cy="100" r="85" fill="#A0522D" />',
-				'<circle cx="100" cy="100" r="75" fill="',
-				toColorHexString(guacamoleColor),
-				'" />'
-			);
+	) private pure returns (bytes memory) {
+		DynamicBufferLib.DynamicBuffer memory buffer;
+
+		buffer.p('<circle cx="100" cy="100" r="90" fill="');
+		buffer.p(bytes(toColorHexString(bowlColor)));
+		buffer.p('" />');
+		buffer.p('<circle cx="100" cy="100" r="85" fill="#A0522D" />');
+		buffer.p('<circle cx="100" cy="100" r="75" fill="');
+		buffer.p(bytes(toColorHexString(guacamoleColor)));
+		buffer.p('" />');
+
+		return buffer.data;
 	}
 
 	function generateIngredientsSVG(
 		uint8 numIngredientTypes,
 		uint256 ingredientSeed
-	) private view returns (string memory) {
-		string memory ingredientsSVG = "";
+	) private view returns (bytes memory) {
+		DynamicBufferLib.DynamicBuffer memory buffer;
+
 		for (uint i = 0; i < numIngredientTypes; ) {
-			ingredientsSVG = string.concat(
-				ingredientsSVG,
-				generateIngredientTypeSVG(ingredientSeed)
-			);
+			buffer.p(generateIngredientTypeSVG(ingredientSeed));
 			ingredientSeed = uint256(
 				keccak256(abi.encodePacked(ingredientSeed))
 			);
@@ -251,15 +251,16 @@ contract YourCollectible is
 				++i;
 			}
 		}
-		return ingredientsSVG;
+
+		return buffer.data;
 	}
 
 	function generateIngredientTypeSVG(
 		uint256 ingredientSeed
-	) private view returns (string memory) {
+	) private view returns (bytes memory) {
 		string memory ingredientColor = ingredientColors[ingredientSeed % 15];
 		uint256 numIngredients = (ingredientSeed % 18) + 3; // 3 to 20 ingredients
-		string memory typeSVG = "";
+		DynamicBufferLib.DynamicBuffer memory buffer;
 
 		for (uint j = 0; j < numIngredients; ) {
 			(
@@ -270,12 +271,11 @@ contract YourCollectible is
 			ingredientSeed = newSeed;
 
 			if (isWithinBowl(cx, cy)) {
-				typeSVG = string.concat(
-					typeSVG,
+				buffer.p(
 					generateSingleIngredientSVG(
 						cx,
 						cy,
-						ingredientColor,
+						bytes(ingredientColor),
 						ingredientSeed
 					)
 				);
@@ -286,7 +286,7 @@ contract YourCollectible is
 			}
 		}
 
-		return typeSVG;
+		return buffer.data;
 	}
 
 	function generateIngredientPosition(
@@ -302,35 +302,36 @@ contract YourCollectible is
 	function generateSingleIngredientSVG(
 		uint256 cx,
 		uint256 cy,
-		string memory color,
+		bytes memory color,
 		uint256 ingredientSeed
-	) private pure returns (string memory) {
+	) private pure returns (bytes memory) {
 		uint256 rx = (ingredientSeed % 4) + 3; // 3 to 6
 		ingredientSeed >>= 2;
 		uint256 ry = (ingredientSeed % 4) + 3; // 3 to 6
 		ingredientSeed >>= 2;
 		uint256 rotation = ingredientSeed % 360;
 
-		return
-			string.concat(
-				'<ellipse cx="',
-				cx.toString(),
-				'" cy="',
-				cy.toString(),
-				'" rx="',
-				rx.toString(),
-				'" ry="',
-				ry.toString(),
-				'" fill="',
-				color,
-				'" transform="rotate(',
-				rotation.toString(),
-				",",
-				cx.toString(),
-				",",
-				cy.toString(),
-				')" />'
-			);
+		DynamicBufferLib.DynamicBuffer memory buffer;
+
+		buffer.p('<ellipse cx="');
+		buffer.p(bytes(LibString.toString(cx)));
+		buffer.p('" cy="');
+		buffer.p(bytes(LibString.toString(cy)));
+		buffer.p('" rx="');
+		buffer.p(bytes(LibString.toString(rx)));
+		buffer.p('" ry="');
+		buffer.p(bytes(LibString.toString(ry)));
+		buffer.p('" fill="');
+		buffer.p(color);
+		buffer.p('" transform="rotate(');
+		buffer.p(bytes(LibString.toString(rotation)));
+		buffer.p(",");
+		buffer.p(bytes(LibString.toString(cx)));
+		buffer.p(",");
+		buffer.p(bytes(LibString.toString(cy)));
+		buffer.p(')" />');
+
+		return buffer.data;
 	}
 
 	function isWithinBowl(uint256 x, uint256 y) private pure returns (bool) {
@@ -347,50 +348,47 @@ contract YourCollectible is
 		uint256 tokenId
 	) public view override returns (string memory) {
 		require(_exists(tokenId), "Token does not exist");
-		string memory svg = generateSVG(tokenId);
-		GuacamoleAttributes memory guacamoleAttributes = tokenIdToAttributes[
-			tokenId
-		];
-		string memory bowlColor = toColorHexString(
-			guacamoleAttributes.bowlColor
-		);
-		string memory guacamoleColor = toColorHexString(
-			guacamoleAttributes.guacamoleColor
-		);
-		string memory numberOfIngredientTypes = uint256(
-			guacamoleAttributes.numIngredientTypes
-		).toString();
 
-		string memory json = Base64.encode(
-			bytes(
-				string(
-					abi.encodePacked(
-						'{"name": "Guacamole #',
-						tokenId.toString(),
-						'", "bowlColor": "',
-						bowlColor,
-						'", "guacamoleColor": "',
-						guacamoleColor,
-						'", "numIngredientTypes": ',
-						numberOfIngredientTypes,
-						', "ingredientSeed": "',
-						guacamoleAttributes.ingredientSeed.toString(),
-						'", "description": "A generative guacamole NFT. The bowl color is ',
-						bowlColor,
-						" and the guacamole color is ",
-						guacamoleColor,
-						". It has ",
-						numberOfIngredientTypes,
-						" ingredient types.",
-						'", "image": "data:image/svg+xml;base64,',
-						Base64.encode(bytes(svg)),
-						'"}'
-					)
+		GuacamoleAttributes memory attrs = tokenIdToAttributes[tokenId];
+		bytes memory svg = bytes(generateSVG(tokenId));
+		bytes memory bowlColor = bytes(toColorHexString(attrs.bowlColor));
+		bytes memory guacamoleColor = bytes(
+			toColorHexString(attrs.guacamoleColor)
+		);
+
+		DynamicBufferLib.DynamicBuffer memory buffer;
+
+		buffer.p('{"name": "Guacamole #');
+		buffer.p(bytes(LibString.toString(tokenId)));
+		buffer.p('", "bowlColor": "');
+		buffer.p(bowlColor);
+		buffer.p('", "guacamoleColor": "');
+		buffer.p(guacamoleColor);
+		buffer.p('", "numIngredientTypes": ');
+		buffer.p(bytes(LibString.toString(attrs.numIngredientTypes)));
+		buffer.p(', "ingredientSeed": "');
+		buffer.p(bytes(LibString.toString(attrs.ingredientSeed)));
+		buffer.p(
+			'", "description": "A generative guacamole NFT. The bowl color is '
+		);
+		buffer.p(bytes(bowlColor));
+		buffer.p(" and the guacamole color is ");
+		buffer.p(bytes(guacamoleColor));
+		buffer.p(". It has ");
+		buffer.p(bytes(LibString.toString(attrs.numIngredientTypes)));
+		buffer.p(' ingredient types.");');
+		buffer.p('"image": "data:image/svg+xml;base64,');
+		buffer.p(bytes(Base64.encode(bytes(svg))));
+		buffer.p('"}');
+
+		LibString.directReturn(
+			string(
+				abi.encodePacked(
+					"data:application/json;base64,",
+					Base64.encode(buffer.data)
 				)
 			)
 		);
-
-		return string(abi.encodePacked("data:application/json;base64,", json));
 	}
 
 	function toColorHexString(
